@@ -209,3 +209,249 @@ char** sliceListArray(char *args[], int ignore){
   }
   return argumentArray;// returnes the new sliced array 
 }
+
+
+
+/////////////// PART A:  BASH /////////////////
+// In this function we tried to implement a simple Bash 
+// It takes the argumenets and background variable then it creates a cild fork to 
+// simulate real life bash using execv
+// we put our argumets inside of execv and then the PATH 
+// after child executed we implemeted a background and foreground 
+// And also we handle the errors
+void executeBash(char *args[],int background){
+  if(!strcmp(args[0], "exit")){ // if user enters exit
+        if(hasBackground==0){  // if no background process running
+          return exit(0);
+        }else{
+          printf("A background process running CANNOT EXIT.\n");
+          return;
+        }
+    }
+    int pid = fork(); // fork child
+    int status;
+
+    if(pid<0){ // if pid less then 0 means that child is not created
+      printf("ERROR, child cannot be created\n");
+    }
+
+    if (pid==0){ // pid 0 is child 
+        int ChildID = getpid();
+        args[argumentLenght]= NULL; // setting last argument to null 
+        char *concated = getPath(args[0]);
+        strcat(strcat(concated,"/"),args[0]);
+
+        if(strcmp(args[argumentLenght-1],"&")==0){
+            args[argumentLenght-1] = NULL;  // to handle background process
+         }
+        int execCall = execv(concated, args); // execv 
+        printf("\n");
+        if(execCall == -1){// if execv cannot execute, it prints an error
+          printf("error in terminal,pls try again.\n");
+          }
+      }
+    else if(pid > 0){
+      if(background==1){ // if process is background then we send it to waitpid call
+          currentBackgroundProcess = pid;// sending background pid to global variable 
+          signal (SIGCHLD, exit_handler);
+          waitpid(pid,&status, WNOHANG);// sending child to background
+          // with this waitpid we didnt wait child to finish its execution
+          hasBackground = 1; 
+      }else if(background==0){
+          printf("----------------------------------------------------\n");
+          currentForegroundProcess=pid;// sending foreground pid to global variable 
+          ForegroundProcessCheck = 1;
+          waitpid(ChildID, &status, 0); // if it foreground we send it to normal waitpid 
+          ForegroundProcessCheck = 0;
+          currentForegroundProcess=0;
+          printf("----------------------------------------------------\n");
+      }
+    }
+}
+
+// structs for the Holders
+struct Holder{
+  char key[20];//keys
+  char value[80];//values
+};
+
+
+/////////////// ALLIEASES PRINTER /////////////////
+// In this fucntion we printed all the alieses 
+//that we created in our Bash
+void printAlliases(struct Holder **storage){
+  printf("\n");
+  printf("All Alliases:\n");
+  for (int i=0; i<storageLenght; i++){ // for loop to get all of them one by one
+    printf("%s %s\n", storage[i]->key, storage[i]->value);
+    // prints all the values inside allies
+  }
+}
+
+/////////////// ALLIAS FINDER /////////////////
+// This function for the find Alieses that we created 
+// it loops over all the allieses and then returns the specific allies
+struct Holder* findAllias(char* key, struct Holder **storage){
+  // it takes key elemet and then all Holder array 
+  for (int i=0; i<storageLenght; i++){
+    if (!strcmp(storage[i]->key, key)){
+      return storage[i];// when it finds it returns the value that we want
+    }
+  }
+  return NULL; //if it cannot find it returnes to NULL
+}
+
+/////////////// ALLIAS STORE /////////////////
+// this part is for storing the alias. 
+//However this is not working very well due to unknown reasons
+// This only 4 aliases can ve stored.
+void storeAllias(char* key, char* value, struct Holder **storage){
+  struct Holder *valueHolder = malloc(sizeof(struct Holder));
+  
+  strcpy(valueHolder->key, key);
+  strcpy(valueHolder->value, value);
+
+  storageLenght += 1;
+  printf("%d\n", storageLenght);
+  storage = realloc(storage, storageLenght * 8);
+  //if (new_storage != 0)
+  //  storage = new_storage;
+  storage[storageLenght-1] = valueHolder;
+}
+
+
+/////////////// DELETE ALLIAS  /////////////////
+// This part is for deleting the desires alias from the storage struct pointer array.
+// It takes the holder allias and storage list to search inside of it 
+// After it finds the target allies it deletes from the array
+void deleteAllias(struct Holder* allias, struct Holder **storage){
+  for (int i=0; i<argumentLenght; i++){
+    if (storage[i]->key == allias->key){
+      if (storageLenght == 1){
+        storageLenght-=1;
+        free(allias);
+        allias = NULL;
+        return;
+      }
+      storageLenght-=1;
+      // When we delete an element from the array this part moves the rest of the 
+      // array to fill the hole. Realloc is to shrink back the array.
+      memmove(&storage[i], &storage[i+1], storageLenght * sizeof(struct Holder*));
+      struct Holder **new_storage = realloc(storage, storageLenght * sizeof(struct Holder*));
+      if (new_storage != 0)
+        storage = new_storage;
+    }
+  }
+}
+
+/////////////// HELPER FUCNTION SPLITTER /////////////////
+// this part is for splitting string and returning splitted string in array form.
+char** splitString(char* string){
+  char* str2;
+  strcpy(str2, string);
+  
+  // counting the future arrays length.
+  int i = 0;
+  char *p = strtok (string, " ");
+  while (p != NULL){
+    p = strtok (NULL, " ");
+    i++;
+  }
+
+  // creating the array form.
+  int j = 0;
+  char *k = strtok (str2, " ");
+  char** newArr = malloc(sizeof(char[20])* i);
+
+  while (k != NULL){
+    newArr[j] = k;
+    j++;
+    k = strtok (NULL, " ");
+  }
+  return newArr;
+}
+ 
+
+///////////////  MAIN PART  ////////////////
+int main(void){
+  char inputBuffer[MAX_LINE];
+  int background;
+  char *args[MAX_LINE/2 + 1];
+  char arguments[80];
+  char key[20];
+  char temp[80];
+  char command[80];
+  struct Holder **storage = malloc(storageLenght * sizeof(struct Holder*));
+
+  while (1){
+    background = 0;
+    printf("myshell>> ");
+    fflush(stdout);
+    setup(inputBuffer, args, &background);
+
+    /////////// CTRL+Z SIGNAL //////////////
+    signal(SIGTSTP, ctrl_z_signalHandler);
+
+    /////////// ALLIAS //////////////
+    // This function is activated when user types alias
+    // if it inputs with -l then it prints all aliases.
+    // 
+    if (!strcmp(args[0], "alias") && args[1] != NULL){
+      if (!strcmp(args[1], "-l")){
+        printAlliases(storage);
+        continue;
+      }
+      strcpy(key, args[argumentLenght-1]);
+
+      // this part is for eliminating alias in the begining.
+      for (int i=1; i<argumentLenght-1; i++){
+        strcat(temp, args[i]);
+        strcat(temp, " ");
+      }      
+
+      strcpy(temp, "");
+      char *result = temp+1;
+      result[strlen(result)-2] = '\0';
+      strcpy(command, result);
+
+      // checks if there is an alias with the same key.
+      if (findAllias(key, storage) != NULL){
+        printf("There is an allias with that name!\n");
+        continue;
+      }
+      storeAllias(key, command, storage);
+    }
+
+    ///////// UNALLIAS //////////
+    // This part is activated when user input unalias.
+    // And first finds the alias than deletes it from the array.
+    else if (!strcmp(args[0], "unalias")){
+      struct Holder* found= findAllias(args[1], storage);
+      deleteAllias(found, storage);
+    }
+
+    ////////// BASH AND EXECUTION /////////
+    else {
+
+      //PART B ==> FUNCTION
+      // This is for executing an allias bookmark.
+      // first it finds the allias from the array and executes it using system.
+      struct Holder *alliasObject = findAllias(args[0], storage);
+      if (alliasObject != NULL){
+        system(alliasObject->value);
+        continue;
+      }
+
+      //PART C ==> BUT ITS NOT WORKING BCS OF SEGMENTATION FAULT
+      // if (!strcmp(args[argumentLenght-2], ">") || !strcmp(args[argumentLenght-2], ">>") || !strcmp(args[argumentLenght-2], "<")){
+      //   printf(" ==> %s\n", fullCommand);
+      //   system(fullCommand);
+      //   printf("sıfırlayan\n");
+      //   continue;
+      // }
+
+      // PART A ==> FUNCTION
+      executeBash(args,background); 
+    }
+  }
+}
